@@ -9,8 +9,8 @@ import java.util.*;
 public class MatrixFloodFiller {
 
     /**
-     * 在相连画板矩阵组成的全局视口大画板上执行跨画布泛洪填充 (油漆桶多画布联动)
-     * 支持 8 连通（含对角线）全向无死角蔓延，彻底覆盖所有相接线条与边缘
+     * 在相连画板矩阵组成的全局视口大画板上执行稳健的跨画布泛洪填充 (油漆桶多画布联动)
+     * 采用标准的图形学 4 连通泛洪 + 入队即着色策略，彻底杜绝孤立白线残留与死角
      */
     public static boolean applyMatrixFloodFill(CanvasMatrix matrix, CanvasFrameNode startNode, int startSurfaceX, int startSurfaceY, byte newColor) {
         if (matrix == null || startNode == null) return false;
@@ -18,7 +18,6 @@ public class MatrixFloodFiller {
         CanvasData startCanvas = startNode.canvas;
         if (startCanvas.isProtected() || startCanvas.isAnimated()) return false;
 
-        // 全局大画板总像素尺寸 (每个展示框 128x128 像素)
         int globalW = matrix.cols * 128;
         int globalH = matrix.rows * 128;
 
@@ -33,6 +32,8 @@ public class MatrixFloodFiller {
 
         boolean[][] visited = new boolean[globalH][globalW];
         Queue<Point> queue = new ArrayDeque<>();
+
+        // 入队即标记已访问
         queue.add(new Point(startGlobalX, startGlobalY));
         visited[startGlobalY][startGlobalX] = true;
 
@@ -43,9 +44,9 @@ public class MatrixFloodFiller {
             }
         }
 
-        // 8 连通方向向量 (上下左右 + 4 个对角线，彻底覆盖斜向线条与狭缝)
-        int[] dx = {1, -1, 0, 0, 1, 1, -1, -1};
-        int[] dy = {0, 0, 1, -1, 1, -1, 1, -1};
+        // 标准正交 4-连通方向，防止对角跳跃破坏连续区域
+        int[] dx = {1, -1, 0, 0};
+        int[] dy = {0, 0, 1, -1};
 
         while (!queue.isEmpty()) {
             Point p = queue.poll();
@@ -67,8 +68,8 @@ public class MatrixFloodFiller {
             node.canvas.setPixel(cPt.x, cPt.y, newColor);
             modifiedCanvases.add(node.canvas);
 
-            // 向八个方向蔓延
-            for (int i = 0; i < 8; i++) {
+            // 扩展四邻
+            for (int i = 0; i < 4; i++) {
                 int nx = gX + dx[i];
                 int ny = gY + dy[i];
 
@@ -82,7 +83,7 @@ public class MatrixFloodFiller {
                         Point checkPt = CanvasCoordinateAdapter.surfaceToCanvas(nLocalX, nLocalY, nNode.frame);
                         byte cColor = nNode.canvas.getPixel(checkPt.x, checkPt.y);
                         if (cColor == targetColor) {
-                            visited[ny][nx] = true;
+                            visited[ny][nx] = true; // 入队立刻锁定
                             queue.add(new Point(nx, ny));
                         }
                     }

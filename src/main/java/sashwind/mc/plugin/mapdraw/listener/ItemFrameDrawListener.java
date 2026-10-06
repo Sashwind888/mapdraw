@@ -208,6 +208,9 @@ public class ItemFrameDrawListener implements Listener {
         // 未持工具：潜行（蹲下）右键打开控制菜单
         if (player.isSneaking()) {
             event.setCancelled(true);
+            if (!plugin.isChestGuiEnabled(player)) {
+                return; // 客户端 Mod 禁用了箱子菜单
+            }
             if (!canvas.isProtected()) {
                 plugin.getGuiManager().openMainMenu(player, canvas);
             } else {
