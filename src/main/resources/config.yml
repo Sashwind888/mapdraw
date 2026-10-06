@@ -1,0 +1,123 @@
+# MapDraw 插件配置文件
+
+economy:
+  enabled: true
+  create_cost: 100.0
+  upload_cost_per_map: 100.0
+
+upload:
+  max_width: 5
+  max_height: 5
+  max_total_maps: 25
+
+network:
+  # 是否开启客户端 Mod 原生网络通信数据包通道
+  enabled: true
+  # 数据包通信通道标识符 (符合 Minecraft NamespacedKey 标准: 命名空间:通道名)
+  channel: "mapdraw:main"
+
+gif:
+  enabled: true
+  # 动图默认播放帧率 FPS (1 - 20，推荐 5 - 10)
+  fps: 8
+  # 最大解析帧数，防止超大超长 GIF 耗尽内存
+  max_frames: 80
+  # 玩家视距检测半径（格），周围无玩家时自动休眠暂停，节省性能
+  view_distance: 32
+
+canvas:
+  default_size: 128
+  allowed_sizes: [16, 32, 64, 128]
+  # 画布背景默认颜色字节（34 代表纯白色，若为 0 代表透明/无色）
+  default_bg_color: 34
+  # 是否默认禁止拷贝
+  default_prevent_copy: true
+  # 展示框点击映射旋转校准 (0: 0度, 1: 90度, 2: 180度, 3: 270度)
+  rotation_offset: 0
+  # 连笔平滑插值判定窗口时间 (毫秒)，放宽至 400ms 容忍网络与发包抖动，防快速挥笔断线 (默认 400ms)
+  stroke_timeout_ms: 400
+  # 连续作画两帧最大允许像素跨距 (像素)，放宽至 800.0 像素支持跨大区域平滑连笔 (默认 800.0)
+  max_stroke_distance: 800.0
+  # 是否开启调试模式（开启后每次点击展示框会在动作栏/聊天框打印朝向、旋转与坐标）
+  debug: false
+
+tools:
+  pen:
+    # 若启用了 CraftEngine，可填写对应的自定义物品 ID (例如: "mapdraw:pen" 或 "my_items:pen")
+    # 若留空或找不到对应 ID，将自动回退使用下面的 material
+    craftengine_id: ""
+    material: FEATHER
+    name: "&b&lMapDraw - 画笔"
+    lore:
+      - "&7手持此画笔右键展示框绘制单点"
+      - "&8(该物品无法用于合成或其它用途)"
+  eraser:
+    craftengine_id: ""
+    material: SHEARS
+    name: "&c&lMapDraw - 橡皮擦"
+    lore:
+      - "&7手持此橡皮擦右键展示框擦除像素"
+      - "&8(该物品无法用于合成或其它用途)"
+  paintbucket:
+    craftengine_id: ""
+    material: WATER_BUCKET
+    name: "&e&lMapDraw - 油漆桶"
+    lore:
+      - "&7手持此油漆桶右键展示框泛洪填充连续区域"
+      - "&8(该物品无法用于合成或其它用途)"
+
+messages:
+  prefix: "&8[&bMapDraw&8] &r"
+  no_permission: "&c你没有权限执行此操作！"
+  only_player: "&c此命令只能由玩家在游戏内执行！"
+  invalid_args: "&c参数错误，请使用 &e/mapdraw help &c查看帮助。"
+  map_created: "&a成功创建画布地图: &e{name} &a(大小: {size}x{size})！"
+  map_create_cost: "&a已扣除创建费用: &e{cost} &a游戏币。"
+  no_enough_money: "&c你的金币不足，创建画布需要: &e{cost} &c游戏币！"
+  hold_canvas_map: "&c请手持一张 MapDraw 画布地图！"
+  protected_confirm: "&e请在 &c2秒内 &e再次点击或执行 &6/mdw protect &e以确认锁定保护！（此操作永久生效且不可撤销）"
+  protected_success: "&a画布已成功设置保护模式！此操作不可撤销，画布已永久锁定不可编辑。"
+  deprotected_success: "&a已成功解除该画布的保护模式！"
+  deprotected_no_permission: "&c你不是该画布的作者或管理员，无法解除保护！"
+  gif_locked: "&c该画布为 GIF 动图，永久锁定保护不可修改，任何人都无法解除！"
+  canvas_protected: "&c该画布处于保护模式，无法编辑任何数据或像素！"
+  cannot_shrink_size: "&c该画布已有填色内容，放大后无法缩小！当前尺寸: {current}，目标尺寸: {target}。"
+  size_updated: "&a画布可用尺寸已更新为: &e{size}x{size}。"
+  title_updated: "&a画布标题已更新为: &r{title}。"
+  description_updated: "&a画布描述已更新为: &r{description}。"
+  color_set: "&a绘画颜色已设置为: &r{color}。"
+  color_invalid: "&c无效的颜色格式！支持十六进制(#RRGGBB)、英文颜色名(red, blue...)或颜色代码(&a, &c...)。"
+  tool_given: "&a已获得绘图工具: &e{tool}。"
+  tool_cleared: "&e已清空当前绘图工具。"
+  undo_success: "&a已撤销上一步操作！"
+  undo_failed: "&c没有可以撤销的历史步骤！"
+  redo_success: "&a已重做下一步操作！"
+  redo_failed: "&c没有可以重做的历史步骤！"
+  copy_forbidden: "&c该地图已被设置为禁止拷贝！"
+  uploading: "&e正在下载并处理图片，请稍候..."
+  upload_failed: "&c图片下载或解析失败: {error}"
+  upload_success: "&a图片上传成功！已生成 &e{count} &a张画布地图 (规格: {width}x{height})"
+  upload_cost: "&a已扣除上传绘制费用: &e{cost} &a游戏币 (共 {count} 张地图)。"
+  no_enough_money_upload: "&c你的金币不足，上传 {count} 张画布需要: &e{cost} &c游戏币！"
+  upload_size_exceeded: "&c超出地图尺寸上限！最大允许规格: {max_w}x{max_h}，总张数不超过 {max_total} 张。"
+  config_reloaded: "&aMapDraw 配置文件重载成功！"
+
+help:
+  header: "&8§m-----------------&b [MapDraw 帮助手册] &8§m-----------------"
+  footer: "&8§m-------------------------------------------------------"
+  user_lines:
+    - "&e/{label} create [name] [size] &7- 创建一张画布地图"
+    - "&e/{label} upload <图片URL> [dither/none] [宽] [高] &7- 上传图片生成单张或多联画"
+    - "&e/{label} protect &7- 锁定保护手持画布(需2秒内确认)"
+    - "&e/{label} menu &7- 打开可视化控制菜单(手持右键亦可)"
+    - "&e/{label} data get &7- 查看手持画布详细数据并同步物品"
+    - "&e/{label} data set title <内容> &7- 设置画布标题"
+    - "&e/{label} data set description <内容> &7- 设置画布描述"
+    - "&e/{label} data set size <大小> &7- 设置画布大小(放大后填色不可缩小)"
+    - "&e/{label} draw color [#rrggbb/颜色/&代码] &7- 设定颜色(不填弹16色菜单)"
+    - "&e/{label} draw tool <pen/eraser/paintbucket/null> &7- 获取或清空绘图工具"
+    - "&e/{label} draw undo &7- 撤销上一步绘制"
+    - "&e/{label} draw redo &7- 重做下一步绘制"
+  admin_lines:
+    - "&6/{label} admin deprotect &7- [作者/管理员] 解除画布保护"
+    - "&6/{label} admin reload &7- [管理员] 重载配置文件"

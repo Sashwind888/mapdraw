@@ -1,0 +1,70 @@
+name: mapdraw
+version: '${version}'
+main: sashwind.mc.plugin.mapdraw.Mapdraw
+api-version: '26.2'
+load: POSTWORLD
+authors: [ Sashwind ]
+depend: [ ProtocolLib ]
+softdepend: [ Vault, CraftEngine ]
+
+commands:
+  mapdraw:
+    description: 地图绘制插件主命令
+    aliases: [ mdw ]
+    usage: /<command> help
+    permission: mapdraw.user
+
+permissions:
+  mapdraw.user:
+    description: 普通用户基础权限（包含菜单等）
+    default: true
+    children:
+      mapdraw.user.create: true
+      mapdraw.user.protect: true
+      mapdraw.user.data: true
+      mapdraw.user.draw: true
+      mapdraw.user.draw.undo: true
+      mapdraw.user.draw.redo: true
+      mapdraw.upload: true
+
+  mapdraw.upload:
+    description: 允许上传网络图片生成画布地图
+    default: true
+
+  mapdraw.user.create:
+    description: 允许创建画布地图
+    default: true
+  mapdraw.user.protect:
+    description: 允许锁定保护画布地图
+    default: true
+  mapdraw.user.data:
+    description: 允许获取或修改地图元数据
+    default: true
+  mapdraw.user.draw:
+    description: 允许使用绘图工具和选色
+    default: true
+  mapdraw.user.draw.undo:
+    description: 允许撤销绘制
+    default: true
+  mapdraw.user.draw.redo:
+    description: 允许重做绘制
+    default: true
+
+  mapdraw.admin:
+    description: 管理员权限
+    default: op
+    children:
+      mapdraw.user: true
+      mapdraw.admin.deprotect: true
+      mapdraw.admin.reload: true
+      mapdraw.admin.createwithnomoney: true
+
+  mapdraw.admin.deprotect:
+    description: 允许管理员强制解除画布保护
+    default: op
+  mapdraw.admin.reload:
+    description: 允许重载配置文件
+    default: op
+  mapdraw.admin.createwithnomoney:
+    description: 允许免费创建画布地图
+    default: op
