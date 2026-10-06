@@ -91,50 +91,11 @@ mapdraw
 
 ---
 
-## ⚙️ 配置文件 (config.yml)
+## 待修复
 
-```yaml
-# MapDraw 插件配置文件
+- [ ] 当用油漆桶对连续的画布进行操作，有概率出现一些线条无法被覆盖
 
-economy:
-  enabled: true
-  create_cost: 100.0   # 创建画布扣除的游戏币金额
-
-canvas:
-  default_size: 128
-  allowed_sizes: [16, 32, 64, 128]
-  default_bg_color: 0
-  default_prevent_copy: true
-
-tools:
-  pen:
-    # 若启用了 CraftEngine，可填写对应的自定义物品 ID (例如: "mapdraw:pen" 或 "my_pack:pen")
-    # 若留空或找不到对应 ID，将自动回退使用下面的 material
-    craftengine_id: ""
-    material: FEATHER
-    name: "&b&lMapDraw - 画笔"
-    lore:
-      - "&7手持此画笔右键展示框绘制单点"
-      - "&8(该物品无法用于合成或其它用途)"
-  eraser:
-    craftengine_id: ""
-    material: SHEARS
-    name: "&c&lMapDraw - 橡皮擦"
-    lore:
-      - "&7手持此橡皮擦右键展示框擦除像素"
-      - "&8(该物品无法用于合成或其它用途)"
-  paintbucket:
-    craftengine_id: ""
-    material: WATER_BUCKET
-    name: "&e&lMapDraw - 油漆桶"
-    lore:
-      - "&7手持此油漆桶右键展示框泛洪填充连续区域"
-      - "&8(该物品无法用于合成或其它用途)"
-
-messages:
-  prefix: "&8[&bMapDraw&8] &r"
-  # 各类提示文本可在配置中高度自定义...
-```
+- [ ] 连续的画布绘制时偶发线条断开
 
 ---
 
