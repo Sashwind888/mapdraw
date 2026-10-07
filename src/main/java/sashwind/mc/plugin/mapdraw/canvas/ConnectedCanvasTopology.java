@@ -11,6 +11,9 @@ import java.util.*;
 
 public class ConnectedCanvasTopology {
 
+    /** 联动搜索的总帧数上限（兜底，防止畸形布局把 BFS 拖死）。 */
+    private static final int MAX_MATRIX_NODES = 512;
+
     public static class CanvasFrameNode {
         public final ItemFrame frame;
         public final CanvasData canvas;
@@ -51,6 +54,14 @@ public class ConnectedCanvasTopology {
      * 规则：
      * 1. 只要其中包含任何一个已锁定或 GIF 动图画布，立即拒绝联动并返回 null；
      * 2. 搜索到的所有画布必须朝向完全一致，形成连续的画板拓扑。
+     *
+     * <p><b>注意（重要）：</b>搜索结果必须与「从哪个展示框开始搜」无关 —— 归一化原点取的是
+     * 连通区域自己的最左上角（minU/minV），只要搜出来的集合一样，网格坐标就一样。
+     * 之前这里用的是「相对起始展示框 ±maxRadius 就停止扩散」，同一个连通区域从不同展示框出发
+     * 会搜出<b>不同的子集</b>，包围盒跟着变，客户端用 0x84 算出来的全局坐标在 0x12 里就会错位
+     * （报「坐标超出多画板矩阵范围」或落到别的格子上）。
+     * 现在改成：把整块连通区域搜完，只用「总帧数上限」兜底（上限由 maxRadius 换算而来，
+     * 保留「别搜太远」的意图，但不让结果依赖起始展示框）。</p>
      */
     public static CanvasMatrix findConnectedMatrix(ItemFrame startFrame, CanvasManager canvasManager, int maxRadius) {
         if (startFrame == null || !startFrame.isValid()) return null;
@@ -80,6 +91,9 @@ public class ConnectedCanvasTopology {
 
         Location baseLoc = startFrame.getLocation();
 
+        // 总帧数上限：maxRadius=5 时是 100 帧，足够覆盖 10x10 的大板，同时防止畸形布局把搜索拖死
+        int maxNodes = Math.max(16, Math.min(MAX_MATRIX_NODES, Math.max(1, maxRadius) * Math.max(1, maxRadius) * 4));
+
         while (!queue.isEmpty()) {
             Point cur = queue.poll();
             CanvasFrameNode curNode = visited.get(cur);
@@ -96,7 +110,9 @@ public class ConnectedCanvasTopology {
                 Point nextPt = new Point(nextU, nextV);
 
                 if (visited.containsKey(nextPt)) continue;
-                if (Math.abs(nextU) > maxRadius || Math.abs(nextV) > maxRadius) continue;
+
+                // 用总帧数兜底，而不是「相对起始展示框 ±maxRadius」（那样结果会依赖起始框）
+                if (visited.size() >= maxNodes) break;
 
                 // 计算相邻格子的空间坐标
                 Location expectedLoc = baseLoc.clone()

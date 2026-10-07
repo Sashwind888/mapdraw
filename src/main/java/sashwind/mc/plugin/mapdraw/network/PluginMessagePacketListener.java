@@ -10,13 +10,39 @@ import sashwind.mc.plugin.mapdraw.api.DrawResult;
 import sashwind.mc.plugin.mapdraw.api.MapDrawAPI;
 import sashwind.mc.plugin.mapdraw.api.MapDrawProvider;
 import sashwind.mc.plugin.mapdraw.canvas.CanvasData;
+import sashwind.mc.plugin.mapdraw.canvas.ConnectedCanvasTopology;
 import sashwind.mc.plugin.mapdraw.tool.ToolType;
 
 import java.awt.Color;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PluginMessagePacketListener implements PluginMessageListener {
 
     private final Mapdraw plugin;
+
+    /**
+     * 每个玩家最近一次 0x11 QUERY_CONNECTED 得到的矩阵。
+     *
+     * <p>0x12 DRAW_GRID_PIXEL 的全局坐标是客户端按「它收到的那份 0x84」算出来的，
+     * 所以落笔时必须用<b>同一份矩阵</b>切片。以前是拿基准展示框重新搜一遍，
+     * 换一个基准框可能搜出不同的包围盒（归一化原点不同）→ 坐标错位/被判超范围。</p>
+     */
+    private final Map<UUID, CachedMatrix> matrixCache = new ConcurrentHashMap<>();
+
+    /** 缓存的矩阵 + 记录时间（超时后重新搜，避免世界被改动后一直用旧矩阵）。 */
+    private static final class CachedMatrix {
+        final ConnectedCanvasTopology.CanvasMatrix matrix;
+        final long at;
+
+        CachedMatrix(ConnectedCanvasTopology.CanvasMatrix matrix, long at) {
+            this.matrix = matrix;
+            this.at = at;
+        }
+    }
+
+    private static final long MATRIX_CACHE_TTL_MS = 10 * 60 * 1000L;
 
     public PluginMessagePacketListener(Mapdraw plugin) {
         this.plugin = plugin;
@@ -334,6 +360,12 @@ public class PluginMessagePacketListener implements PluginMessageListener {
             return;
         }
 
+        // 记下这份矩阵：接下来这个玩家发来的 0x12 全局坐标就是按它算的
+        rememberMatrix(player, matrix);
+
+        plugin.getLogger().fine(String.format("多画布拓扑：玩家=%s 基准框=%d 矩阵=%dx%d(%d 格)",
+            player.getName(), entityId, matrix.cols, matrix.rows, matrix.allNodes.size()));
+
         ByteArrayDataOutput out = ByteStreams.newDataOutput();
         out.writeByte(PacketProtocol.S2C_CONNECTED_MATRIX);
         out.writeInt(matrix.cols);
@@ -376,8 +408,16 @@ public class PluginMessagePacketListener implements PluginMessageListener {
             return;
         }
 
-        sashwind.mc.plugin.mapdraw.canvas.ConnectedCanvasTopology.CanvasMatrix matrix =
-            sashwind.mc.plugin.mapdraw.canvas.ConnectedCanvasTopology.findConnectedMatrix(startFrame, plugin.getCanvasManager(), 5);
+        sashwind.mc.plugin.mapdraw.canvas.ConnectedCanvasTopology.CanvasMatrix matrix = cachedMatrix(player, baseEntityId);
+
+        if (matrix == null) {
+            // 缓存里没有（或基准框不在缓存矩阵里）→ 现搜一份
+            matrix = sashwind.mc.plugin.mapdraw.canvas.ConnectedCanvasTopology.findConnectedMatrix(startFrame, plugin.getCanvasManager(), 5);
+
+            if (matrix != null) {
+                rememberMatrix(player, matrix);
+            }
+        }
 
         if (matrix == null) {
             sendResponse(player, PacketProtocol.C2S_DRAW_GRID_PIXEL, false, "多画布矩阵无效或受保护");
@@ -391,7 +431,15 @@ public class PluginMessagePacketListener implements PluginMessageListener {
 
         sashwind.mc.plugin.mapdraw.canvas.ConnectedCanvasTopology.CanvasFrameNode targetNode = matrix.getNode(targetCol, targetRow);
         if (targetNode == null) {
-            sendResponse(player, PacketProtocol.C2S_DRAW_GRID_PIXEL, false, "坐标超出多画板矩阵范围");
+            // 把矩阵尺寸一起回给客户端，方便定位是「坐标算错」还是「矩阵不一致」
+            plugin.getLogger().warning(String.format(
+                "多画布落笔超出矩阵：玩家=%s 基准框=%d 全局=(%d,%d) 请求格=(%d,%d) 矩阵=%dx%d(%d 格)",
+                player.getName(), baseEntityId, globalX, globalY, targetCol, targetRow,
+                matrix.cols, matrix.rows, matrix.allNodes.size()));
+
+            sendResponse(player, PacketProtocol.C2S_DRAW_GRID_PIXEL, false,
+                String.format("坐标超出多画板矩阵范围 (矩阵 %dx%d，共 %d 格，请求格 %d,%d)",
+                    matrix.cols, matrix.rows, matrix.allNodes.size(), targetCol, targetRow));
             return;
         }
 
@@ -408,6 +456,37 @@ public class PluginMessagePacketListener implements PluginMessageListener {
         out.writeBoolean(success);
         out.writeUTF(message != null ? message : "");
         player.sendPluginMessage(plugin, plugin.getNetworkChannel(), out.toByteArray());
+    }
+
+    // ------------------------------------------------------------------
+    // 多画布矩阵缓存（让 0x12 与 0x11 用同一份矩阵）
+    // ------------------------------------------------------------------
+
+    /** 记下这个玩家最近一次 0x11 得到的矩阵，并顺手清理过期条目。 */
+    private void rememberMatrix(Player player, ConnectedCanvasTopology.CanvasMatrix matrix) {
+        long now = System.currentTimeMillis();
+        this.matrixCache.put(player.getUniqueId(), new CachedMatrix(matrix, now));
+        this.matrixCache.entrySet().removeIf(entry -> now - entry.getValue().at > MATRIX_CACHE_TTL_MS);
+    }
+
+    /**
+     * 取缓存矩阵；缓存过期、或者基准展示框不在缓存矩阵里（玩家换了块画板）时返回 null，
+     * 调用方会重新搜索一份。
+     */
+    private ConnectedCanvasTopology.CanvasMatrix cachedMatrix(Player player, int baseEntityId) {
+        CachedMatrix cached = this.matrixCache.get(player.getUniqueId());
+
+        if (cached == null || System.currentTimeMillis() - cached.at > MATRIX_CACHE_TTL_MS) {
+            return null;
+        }
+
+        for (ConnectedCanvasTopology.CanvasFrameNode node : cached.matrix.allNodes) {
+            if (node.frame.getEntityId() == baseEntityId) {
+                return cached.matrix;
+            }
+        }
+
+        return null;
     }
 
     private ToolType parseTool(byte toolByte) {
