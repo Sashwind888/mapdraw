@@ -15,6 +15,12 @@ network:
   enabled: true
   # 数据包通信通道标识符 (符合 Minecraft NamespacedKey 标准: 命名空间:通道名)
   channel: "mapdraw:main"
+  # 绘制类数据包（0x01 单点 / 0x02 批量 / 0x12 大板全局落笔）每秒最多处理多少个，
+  # 超出的直接丢弃（只丢包、不踢人、不回包，最多每 5 秒在控制台提醒一次）。
+  # 0 或负数 = 不限制。客户端 Mod 默认不再自己限速，画速限流统一交给这里；
+  # 注意 Paper 的 packet-limiter 统计的是「所有」数据包（默认 500/秒），
+  # 要放开画速的话记得把它一起调大（paper-global.yml → packet-limiter）。
+  max-draw-packets-per-second: 2048
 
 gif:
   enabled: true

@@ -13,10 +13,23 @@ import sashwind.mc.plugin.mapdraw.canvas.CanvasData;
 import sashwind.mc.plugin.mapdraw.tool.ToolType;
 
 import java.awt.Color;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PluginMessagePacketListener implements PluginMessageListener {
 
     private final Mapdraw plugin;
+
+    /** 每个玩家的绘制发包窗口：1 秒一个窗口。 */
+    private static final class DrawRateWindow {
+        long windowStart = System.currentTimeMillis();
+        int count;
+        int dropped;
+        long lastWarnAt;
+    }
+
+    private final Map<UUID, DrawRateWindow> drawRate = new ConcurrentHashMap<>();
 
     public PluginMessagePacketListener(Mapdraw plugin) {
         this.plugin = plugin;
@@ -34,6 +47,16 @@ public class PluginMessagePacketListener implements PluginMessageListener {
 
         ByteArrayDataInput in = ByteStreams.newDataInput(message);
         byte packetId = in.readByte();
+
+        // 绘制类数据包限流（0x01 单点 / 0x02 批量 / 0x12 大板全局落笔）：
+        // 客户端 Mod 默认不再自己压速度，画速的限流统一由这里的配置管（默认 2048/秒）。
+        if (packetId == PacketProtocol.C2S_DRAW_PIXEL
+            || packetId == PacketProtocol.C2S_DRAW_BATCH
+            || packetId == PacketProtocol.C2S_DRAW_GRID_PIXEL) {
+            if (!allowDrawPacket(player)) {
+                return; // 超限：直接丢包（不回包，避免把刷包变成刷回包）
+            }
+        }
 
         MapDrawAPI api = MapDrawProvider.get();
 
@@ -398,6 +421,58 @@ public class PluginMessagePacketListener implements PluginMessageListener {
         ToolType tool = parseTool(toolByte);
         DrawResult res = api.drawPixel(player, targetNode.canvas, localX, localY, tool, colorByte);
         sendResponse(player, PacketProtocol.C2S_DRAW_GRID_PIXEL, res.isSuccess(), res.getMessage());
+    }
+
+    // ------------------------------------------------------------------
+    // 绘制类数据包限流
+    // ------------------------------------------------------------------
+
+    /**
+     * 绘制类数据包限流。
+     *
+     * <p>上限来自 {@code config.yml → network.max-draw-packets-per-second}（默认 2048，0 = 不限制）。
+     * 超出的包直接丢弃：不回包（否则刷包会变成刷回包）、不踢人，最多每 5 秒在控制台提醒一次。</p>
+     *
+     * @return true = 放行；false = 本秒已经超过上限，丢弃
+     */
+    private boolean allowDrawPacket(Player player) {
+        int limit = plugin.getConfig().getInt("network.max-draw-packets-per-second", 2048);
+
+        if (limit <= 0) {
+            return true;
+        }
+
+        DrawRateWindow window = this.drawRate.computeIfAbsent(player.getUniqueId(), key -> new DrawRateWindow());
+        long now = System.currentTimeMillis();
+
+        synchronized (window) {
+            if (now - window.windowStart >= 1000L) {
+                if (window.dropped > 0 && now - window.lastWarnAt > 5000L) {
+                    window.lastWarnAt = now;
+                    plugin.getLogger().warning(String.format(
+                        "玩家 %s 的绘制发包超过 %d/秒，上一秒丢弃了 %d 个（可调 config.yml 的 network.max-draw-packets-per-second）",
+                        player.getName(), limit, window.dropped));
+                }
+
+                window.windowStart = now;
+                window.count = 0;
+                window.dropped = 0;
+            }
+
+            if (window.count >= limit) {
+                window.dropped++;
+                return false;
+            }
+
+            window.count++;
+        }
+
+        // 玩家多了以后顺手清掉长期不活跃的窗口
+        if (this.drawRate.size() > 64) {
+            this.drawRate.entrySet().removeIf(entry -> now - entry.getValue().windowStart > 10 * 60 * 1000L);
+        }
+
+        return true;
     }
 
     // 发送通用操作响应回客户端
