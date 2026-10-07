@@ -66,6 +66,17 @@ public interface MapDrawAPI {
     DrawResult drawPixel(Player player, CanvasData canvas, int px, int py, ToolType tool, byte color);
 
     /**
+     * 玩家在画布上一次落笔很多个点（批量绘制）。
+     *
+     * <p>与 {@link #drawPixel} 相比：鉴权/保护状态只校验一次，整批只记<b>一个</b>撤销快照，
+     * 全部落笔后只通知<b>一次</b>画布更新（一次地图包 + 一次存盘）。
+     * 客户端一个 {@code 0x02 DRAW_BATCH} 或 {@code 0x12 DRAW_GRID_PIXEL}（带批量尾巴）就是一个批次。</p>
+     *
+     * @param points 画布局部坐标（0-127），按顺序落笔；空或全部越界会返回失败
+     */
+    DrawResult drawPixels(Player player, CanvasData canvas, java.util.List<java.awt.Point> points, ToolType tool, byte color);
+
+    /**
      * 玩家手持工具在展示框上执行点击绘制
      * 自动完成光线追踪/点击投影计算、鉴权及绘制同步
      */

@@ -54,7 +54,7 @@ public class PluginMessagePacketListener implements PluginMessageListener {
             case PacketProtocol.C2S_REQUEST_CANVAS_INFO -> handleRequestCanvasInfo(player, in, api);
             case PacketProtocol.C2S_UPLOAD_CHUNK -> handleUploadChunk(player, in);
             case PacketProtocol.C2S_QUERY_CONNECTED -> handleQueryConnected(player, in);
-            case PacketProtocol.C2S_DRAW_GRID_PIXEL -> handleDrawGridPixel(player, in, api);
+            case PacketProtocol.C2S_DRAW_GRID_PIXEL -> handleDrawGridPixel(player, in, api, message.length);
             default -> sendResponse(player, packetId, false, "未知的数据包 ID: " + packetId);
         }
     }
@@ -92,21 +92,19 @@ public class PluginMessagePacketListener implements PluginMessageListener {
         }
 
         ToolType tool = parseTool(toolByte);
-        boolean anySuccess = false;
-        String lastError = null;
+
+        // 整包一次性落笔：鉴权一次、一个撤销快照、一次画布通知（见 MapDrawAPI#drawPixels）
+        java.util.List<java.awt.Point> points = new java.util.ArrayList<>(Math.max(0, count));
 
         for (int i = 0; i < count; i++) {
             short x = in.readShort();
             short y = in.readShort();
-            DrawResult res = api.drawPixel(player, canvas, x, y, tool, colorByte);
-            if (res.isSuccess()) {
-                anySuccess = true;
-            } else {
-                lastError = res.getMessage();
-            }
+            points.add(new java.awt.Point(x, y));
         }
 
-        sendResponse(player, PacketProtocol.C2S_DRAW_BATCH, anySuccess, anySuccess ? "批量绘制成功" : lastError);
+        DrawResult res = api.drawPixels(player, canvas, points, tool, colorByte);
+        sendResponse(player, PacketProtocol.C2S_DRAW_BATCH, res.isSuccess(),
+            res.isSuccess() ? "批量绘制成功" : res.getMessage());
     }
 
     // 0x03: 撤销
@@ -356,12 +354,29 @@ public class PluginMessagePacketListener implements PluginMessageListener {
     }
 
     // 0x12: 大画板全局像素绘制 (自动切片坐标计算与原子落笔)
-    private void handleDrawGridPixel(Player player, ByteArrayDataInput in, MapDrawAPI api) {
+    //
+    // 兼容两种格式：
+    //   ① 单点（旧格式，长度 15 字节）：baseEntityId + globalX + globalY + tool + color
+    //   ② 批量（新格式，在单点之后追加）：short extraCount + extraCount × (int globalX, int globalY)
+    //      —— 与 0x02 DRAW_BATCH 一样一包画很多点，但坐标是「大板全局坐标」。
+    //      服务端按长度判断有没有批量尾巴，老客户端不受影响。
+    private void handleDrawGridPixel(Player player, ByteArrayDataInput in, MapDrawAPI api, int payloadLength) {
         int baseEntityId = in.readInt();
         int globalX = in.readInt();
         int globalY = in.readInt();
         byte toolByte = in.readByte();
         byte colorByte = in.readByte();
+
+        // 单点格式正好 15 字节（含 PacketID）；多出来就是批量尾巴
+        java.util.List<int[]> globals = new java.util.ArrayList<>();
+
+        if (payloadLength >= 17) {
+            short extraCount = in.readShort();
+
+            for (int i = 0; i < extraCount; i++) {
+                globals.add(new int[]{in.readInt(), in.readInt()});
+            }
+        }
 
         org.bukkit.entity.ItemFrame startFrame = null;
         for (org.bukkit.entity.Entity e : player.getNearbyEntities(6.0, 6.0, 6.0)) {
@@ -384,20 +399,70 @@ public class PluginMessagePacketListener implements PluginMessageListener {
             return;
         }
 
+        ToolType tool = parseTool(toolByte);
+
+        // 按「目标画布」分组：一包里可能横跨好几张画布，每张画布最后只通知一次
+        java.util.Map<sashwind.mc.plugin.mapdraw.canvas.CanvasData, java.util.List<java.awt.Point>> byCanvas =
+            new java.util.LinkedHashMap<>();
+        int outOfRange = 0;
+
+        // 首个点（单点格式的那个）
+        if (!collectGridPoint(matrix, globalX, globalY, byCanvas)) {
+            outOfRange++;
+        }
+
+        for (int[] g : globals) {
+            if (!collectGridPoint(matrix, g[0], g[1], byCanvas)) {
+                outOfRange++;
+            }
+        }
+
+        if (byCanvas.isEmpty()) {
+            sendResponse(player, PacketProtocol.C2S_DRAW_GRID_PIXEL, false,
+                String.format("坐标超出多画板矩阵范围 (矩阵 %dx%d，共 %d 格)", matrix.cols, matrix.rows, matrix.allNodes.size()));
+            return;
+        }
+
+        boolean anySuccess = false;
+        String lastError = null;
+
+        for (java.util.Map.Entry<sashwind.mc.plugin.mapdraw.canvas.CanvasData, java.util.List<java.awt.Point>> entry : byCanvas.entrySet()) {
+            DrawResult res = api.drawPixels(player, entry.getKey(), entry.getValue(), tool, colorByte);
+
+            if (res.isSuccess()) {
+                anySuccess = true;
+            } else {
+                lastError = res.getMessage();
+            }
+        }
+
+        String message = anySuccess
+            ? (outOfRange > 0 ? String.format("批量落笔成功（%d 个点超出矩阵，已忽略）", outOfRange) : "批量落笔成功")
+            : lastError;
+        sendResponse(player, PacketProtocol.C2S_DRAW_GRID_PIXEL, anySuccess, message);
+    }
+
+    /**
+     * 把一个「大板全局坐标」按矩阵切片，塞进「目标画布 -> 局部坐标列表」里。
+     *
+     * @return false = 这个格子不在矩阵里（空洞或超范围）
+     */
+    private boolean collectGridPoint(
+        sashwind.mc.plugin.mapdraw.canvas.ConnectedCanvasTopology.CanvasMatrix matrix,
+        int globalX, int globalY,
+        java.util.Map<sashwind.mc.plugin.mapdraw.canvas.CanvasData, java.util.List<java.awt.Point>> byCanvas) {
         int targetCol = globalX / 128;
         int targetRow = globalY / 128;
         int localX = globalX % 128;
         int localY = globalY % 128;
 
-        sashwind.mc.plugin.mapdraw.canvas.ConnectedCanvasTopology.CanvasFrameNode targetNode = matrix.getNode(targetCol, targetRow);
-        if (targetNode == null) {
-            sendResponse(player, PacketProtocol.C2S_DRAW_GRID_PIXEL, false, "坐标超出多画板矩阵范围");
-            return;
+        sashwind.mc.plugin.mapdraw.canvas.ConnectedCanvasTopology.CanvasFrameNode node = matrix.getNode(targetCol, targetRow);
+        if (node == null) {
+            return false;
         }
 
-        ToolType tool = parseTool(toolByte);
-        DrawResult res = api.drawPixel(player, targetNode.canvas, localX, localY, tool, colorByte);
-        sendResponse(player, PacketProtocol.C2S_DRAW_GRID_PIXEL, res.isSuccess(), res.getMessage());
+        byCanvas.computeIfAbsent(node.canvas, key -> new java.util.ArrayList<>()).add(new java.awt.Point(localX, localY));
+        return true;
     }
 
     // 发送通用操作响应回客户端

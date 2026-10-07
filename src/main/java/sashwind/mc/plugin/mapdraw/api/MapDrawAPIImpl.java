@@ -153,6 +153,49 @@ public class MapDrawAPIImpl implements MapDrawAPI {
     }
 
     @Override
+    public DrawResult drawPixels(Player player, CanvasData canvas, List<Point> points, ToolType tool, byte color) {
+        if (player == null) {
+            return DrawResult.failure(DrawResult.Status.INVALID_ARGUMENTS, "玩家不可为空");
+        }
+        if (canvas == null) {
+            return DrawResult.failure(DrawResult.Status.CANVAS_NOT_FOUND, "未指定目标画布");
+        }
+        if (points == null || points.isEmpty()) {
+            return DrawResult.failure(DrawResult.Status.INVALID_ARGUMENTS, "没有要绘制的点");
+        }
+        if (!player.hasPermission("mapdraw.user.draw")) {
+            return DrawResult.failure(DrawResult.Status.NO_PERMISSION, plugin.getMessage("no_permission"));
+        }
+        if (canvas.isAnimated()) {
+            return DrawResult.failure(DrawResult.Status.CANVAS_PROTECTED, plugin.getMessage("gif_locked"));
+        }
+        if (canvas.isProtected()) {
+            return DrawResult.failure(DrawResult.Status.CANVAS_PROTECTED, plugin.getMessage("canvas_protected"));
+        }
+
+        // 整批只记一个撤销快照：客户端「一笔」= 一步撤销，而不是一个点一步
+        canvas.pushUndoState();
+
+        int applied = 0;
+        for (Point point : points) {
+            if (point == null) {
+                continue;
+            }
+            if (DrawingEngine.applyDrawNoUndo(canvas, point.x, point.y, tool, color)) {
+                applied++;
+            }
+        }
+
+        if (applied == 0) {
+            return DrawResult.failure(DrawResult.Status.ERROR, "绘制坐标越界或工具无效");
+        }
+
+        // 整批只通知一次：一次地图包发送 + 一次异步存盘（否则 4096 点的包会发 4096 次）
+        canvasManager.notifyCanvasUpdated(canvas);
+        return DrawResult.success();
+    }
+
+    @Override
     public DrawResult drawOnFrame(Player player, ItemFrame frame) {
         if (player == null || frame == null) {
             return DrawResult.failure(DrawResult.Status.INVALID_ARGUMENTS, "参数不可为空");
