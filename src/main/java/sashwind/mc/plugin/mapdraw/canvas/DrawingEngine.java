@@ -16,6 +16,25 @@ public class DrawingEngine {
             return false;
         }
 
+        if (!inBounds(canvas, px, py)) {
+            return false;
+        }
+
+        // 保存撤销历史（单个点 = 一步撤销）
+        canvas.pushUndoState();
+
+        return applyDrawNoUndo(canvas, px, py, tool, color);
+    }
+
+    /**
+     * 在指定像素点执行绘图操作，<b>但不记撤销历史</b>。
+     *
+     * <p>批量落笔（一个包画很多点）用：整批只 push 一次撤销快照、只通知一次画布更新，
+     * 否则一个 4096 点的包会产生 4096 个撤销快照 + 4096 次地图包发送（服务端直接被打爆）。</p>
+     *
+     * <p>调用方需自行校验保护状态与权限。</p>
+     */
+    public static boolean applyDrawNoUndo(CanvasData canvas, int px, int py, ToolType tool, byte color) {
         int size = canvas.getSize();
         if (size <= 0) size = 128;
         int scale = Math.max(1, 128 / size);
@@ -27,9 +46,6 @@ public class DrawingEngine {
         if (gridX < 0 || gridX >= maxGrid || gridY < 0 || gridY >= maxGrid) {
             return false;
         }
-
-        // 保存撤销历史
-        canvas.pushUndoState();
 
         if (tool == ToolType.PEN) {
             fillGridBlock(canvas, gridX, gridY, scale, color);
@@ -43,6 +59,18 @@ public class DrawingEngine {
         }
 
         return false;
+    }
+
+    /** 坐标是否落在画布的可画区内（0..127，按逻辑格对齐后的范围）。 */
+    public static boolean inBounds(CanvasData canvas, int px, int py) {
+        int size = canvas.getSize();
+        if (size <= 0) size = 128;
+        int scale = Math.max(1, 128 / size);
+        int maxGrid = 128 / scale;
+
+        int gridX = px / scale;
+        int gridY = py / scale;
+        return gridX >= 0 && gridX < maxGrid && gridY >= 0 && gridY < maxGrid;
     }
 
     /**
