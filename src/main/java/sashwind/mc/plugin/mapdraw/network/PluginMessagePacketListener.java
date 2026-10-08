@@ -504,14 +504,17 @@ public class PluginMessagePacketListener implements PluginMessageListener {
         if (targetNode == null) {
             // 把矩阵尺寸一起回给客户端，方便定位是「坐标算错」还是「矩阵不一致」
             plugin.getLogger().warning(String.format(
-                "多画布落笔超出矩阵：玩家=%s 基准框=%d 全局=(%d,%d) 请求格=(%d,%d) 矩阵=%dx%d(%d 格)",
-                player.getName(), baseEntityId, globalX, globalY, targetCol, targetRow,
+                "多画布落笔超出矩阵：全局=(%d,%d) 请求格=(%d,%d) 矩阵=%dx%d(%d 格)"
+                , globalX, globalY, targetCol, targetRow,
                 matrix.cols, matrix.rows, matrix.allNodes.size()));
 
+            /*
             sendResponse(player, PacketProtocol.C2S_DRAW_GRID_PIXEL, false,
                 String.format("坐标超出多画板矩阵范围 (矩阵 %dx%d，共 %d 格，请求格 %d,%d)",
                     matrix.cols, matrix.rows, matrix.allNodes.size(), targetCol, targetRow));
-            return;
+                    */
+            // 缺少参数，目前无法实现。
+            return false;
         }
 
         byCanvas.computeIfAbsent(targetNode.canvas, key -> new java.util.ArrayList<>()).add(new java.awt.Point(localX, localY));
