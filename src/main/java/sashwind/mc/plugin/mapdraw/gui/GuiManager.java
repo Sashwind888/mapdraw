@@ -45,6 +45,9 @@ public class GuiManager implements Listener {
      * 打开 16 色箱子调色板
      */
     public void openPaletteGui(Player player) {
+        if (!plugin.isChestGuiEnabled(player)) {
+            return; // 客户端 Mod 禁用了服务端的箱子菜单
+        }
         Inventory inv = Bukkit.createInventory(null, 27, TITLE_PALETTE);
         PlayerDrawSession session = toolManager.getSession(player);
 
@@ -96,6 +99,9 @@ public class GuiManager implements Listener {
      * 打开画布控制主菜单
      */
     public void openMainMenu(Player player, CanvasData canvas) {
+        if (!plugin.isChestGuiEnabled(player)) {
+            return; // 客户端 Mod 禁用了服务端的箱子菜单
+        }
         if (canvas == null) {
             ItemStack held = player.getInventory().getItemInMainHand();
             canvas = canvasManager.getCanvasFromItem(held);

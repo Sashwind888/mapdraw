@@ -9,62 +9,44 @@ import java.awt.Point;
 
 /**
  * 视口操作空间 (Surface/Screen) 与 地图底层像素空间 (Canvas/Storage) 之间的正交坐标隔离适配器
- * 让所有笔迹追踪、平滑插值、多图跨界在纯净的视口空间中进行，仅在底层写入像素时进行映射
+ * 采用严格的离散整数双射 (Discrete Bijections)，彻底消除浮点数截断造成的 0号/127号边缘整列像素缺失！
  */
 public class CanvasCoordinateAdapter {
 
     /**
      * 将视口坐标 (xs, ys) -> 地图底层像素存储坐标 (cx, cy)
-     *
-     * @param xs 视口水平坐标 (0-127, 左至右)
-     * @param ys 视口垂直坐标 (0-127, 上至下)
-     * @param frame 目标展示框
-     * @return 底层 Canvas 像素坐标
      */
     public static Point surfaceToCanvas(int xs, int ys, ItemFrame frame) {
         if (frame == null) {
             return new Point(xs, ys);
         }
 
-        // 1. 视口坐标归一化 (0.0 ~ 1.0)
-        double u = (double) xs / 128.0;
-        double v = (double) ys / 128.0;
+        // 约束在 [0, 127]
+        int curX = Math.max(0, Math.min(127, xs));
+        int curY = Math.max(0, Math.min(127, ys));
 
-        // 2. 应用配置文件中的基础全局偏置 (0: 0°, 1: 90°, 2: 180°, 3: 270°)
+        // 1. 应用配置中的基础旋转步数 (0: 0°, 1: 90°, 2: 180°, 3: 270°)
         int configRotation = Mapdraw.getInstance().getConfig().getInt("canvas.rotation_offset", 0);
-        int steps = (configRotation % 4 + 4) % 4;
-        for (int i = 0; i < steps; i++) {
-            double nextU = v;
-            double nextV = 1.0 - u;
-            u = nextU;
-            v = nextV;
-        }
+        int totalQuarterSteps = (configRotation % 4 + 4) % 4;
 
-        // 3. 顺应展示框当前物理物品旋转 (每次旋转 45° 阶梯，地图实际旋转 90°)
-        double angle = getMapRenderRotationAngle(frame.getRotation(), frame.getFacing());
-        if (angle != 0.0) {
-            double cu = u - 0.5;
-            double cv = v - 0.5;
-            double cos = Math.cos(-angle);
-            double sin = Math.sin(-angle);
-            u = cu * cos - cv * sin + 0.5;
-            v = cu * sin + cv * cos + 0.5;
-        }
+        // 2. 累加展示框当前物理物品的旋转步数 (每点击 1 次转 90°)
+        int itemQuarterSteps = getMapRenderQuarterSteps(frame.getRotation(), frame.getFacing());
+        totalQuarterSteps = (totalQuarterSteps + itemQuarterSteps) % 4;
 
-        u = Math.max(0.0, Math.min(0.9999, u));
-        v = Math.max(0.0, Math.min(0.9999, v));
-
-        int cx = Math.max(0, Math.min(127, (int) (u * 128)));
-        int cy = Math.max(0, Math.min(127, (int) (v * 128)));
-
-        return new Point(cx, cy);
+        // 3. 严格的离散整数逆时针正交旋转映射，彻底杜绝任何浮点截断漏行漏列
+        return switch (totalQuarterSteps) {
+            case 1 -> new Point(curY, 127 - curX);         // 逆时针 90°
+            case 2 -> new Point(127 - curX, 127 - curY);   // 逆时针 180°
+            case 3 -> new Point(127 - curY, curX);         // 逆时针 270°
+            default -> new Point(curX, curY);              // 0° (不旋转)
+        };
     }
 
     /**
-     * 地图在展示框中的实际渲染旋转角
+     * 地图在展示框中的实际渲染旋转步数 (0, 1, 2, 3，对应 0°, 90°, 180°, 270°)
      */
-    private static double getMapRenderRotationAngle(Rotation rot, BlockFace facing) {
-        if (rot == null) return 0.0;
+    private static int getMapRenderQuarterSteps(Rotation rot, BlockFace facing) {
+        if (rot == null) return 0;
         int stepIndex = switch (rot) {
             case CLOCKWISE -> 0;
             case CLOCKWISE_135 -> 1;
@@ -89,6 +71,6 @@ public class CanvasCoordinateAdapter {
             };
         }
 
-        return (stepIndex % 4) * (Math.PI / 2.0);
+        return (stepIndex % 4);
     }
 }
