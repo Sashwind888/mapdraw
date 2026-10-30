@@ -11,6 +11,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemFrame;
 import org.bukkit.entity.Player;
 import sashwind.mc.plugin.mapdraw.Mapdraw;
+import sashwind.mc.plugin.mapdraw.util.FoliaScheduler;
 
 public class ProtocolLibHook {
 
@@ -51,8 +52,8 @@ public class ProtocolLibHook {
 
                     int entityId = event.getPacket().getIntegers().read(0);
 
-                    // 必须调度回主线程执行实体查找与绘制，避免触碰 Purpur/Spigot 的 AsyncCatcher 异步安全检查
-                    Bukkit.getScheduler().runTask(plugin, () -> {
+                    // 调度回玩家所在的 EntityScheduler 执行实体查找与绘制，避免跨线程/异步安全检查
+                    FoliaScheduler.runAtEntity(plugin, player, () -> {
                         if (!player.isOnline()) return;
                         Entity entity = findEntityById(player, entityId);
                         if (entity instanceof ItemFrame frame) {

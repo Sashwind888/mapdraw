@@ -1,8 +1,8 @@
 package sashwind.mc.plugin.mapdraw.canvas;
 
 import org.bukkit.Bukkit;
-import org.bukkit.scheduler.BukkitTask;
 import sashwind.mc.plugin.mapdraw.Mapdraw;
+import sashwind.mc.plugin.mapdraw.util.FoliaScheduler;
 
 import java.util.*;
 
@@ -10,7 +10,7 @@ public class AnimationManager {
 
     private final Mapdraw plugin;
     private final CanvasManager canvasManager;
-    private BukkitTask asyncTickerTask;
+    private FoliaScheduler.TaskWrapper asyncTickerTask;
 
     public AnimationManager(Mapdraw plugin, CanvasManager canvasManager) {
         this.plugin = plugin;
@@ -24,8 +24,8 @@ public class AnimationManager {
 
         stop();
 
-        // 采用后台异步多线程定时调度，彻底从服务端主线程中剥离高频计算
-        asyncTickerTask = Bukkit.getScheduler().runTaskTimerAsynchronously(plugin, () -> {
+        // 采用后台异步多线程定时调度 (AsyncScheduler)，彻底从服务端主线程中剥离高频计算
+        asyncTickerTask = FoliaScheduler.runTimerAsync(plugin, () -> {
             // 若无玩家在线，自动进入完全休眠状态，零开销
             if (Bukkit.getOnlinePlayers().isEmpty()) {
                 return;
@@ -72,15 +72,15 @@ public class AnimationManager {
                 }
             }
 
-            // 4. 将需要更新的切片批量提交至主线程渲染器标记脏（纯内存更新，绝不触碰磁盘写文件）
+            // 4. 将需要更新的切片批量提交至渲染器标记脏（纯内存更新，绝不触碰磁盘写文件）
             if (!updatedCanvases.isEmpty()) {
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                FoliaScheduler.runGlobal(plugin, () -> {
                     for (CanvasData c : updatedCanvases) {
                         canvasManager.notifyCanvasRenderOnly(c);
                     }
                 });
             }
-        }, 1L, 1L);
+        }, 50L, 50L);
     }
 
     public void stop() {

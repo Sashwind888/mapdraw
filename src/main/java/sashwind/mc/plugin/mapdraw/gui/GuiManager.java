@@ -19,8 +19,10 @@ import sashwind.mc.plugin.mapdraw.tool.ToolManager;
 import sashwind.mc.plugin.mapdraw.tool.ToolType;
 import sashwind.mc.plugin.mapdraw.util.CanvasNBTUtil;
 import sashwind.mc.plugin.mapdraw.util.ColorUtil;
+import sashwind.mc.plugin.mapdraw.util.FoliaScheduler;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class GuiManager implements Listener {
 
@@ -32,8 +34,8 @@ public class GuiManager implements Listener {
     public static final String TITLE_MAIN = "§8[MapDraw] 画布控制台";
 
     // 存储玩家正在主菜单查看的画布
-    private final Map<UUID, CanvasData> openCanvasMap = new HashMap<>();
-    private final Map<UUID, Long> guiProtectConfirmTimes = new HashMap<>();
+    private final Map<UUID, CanvasData> openCanvasMap = new ConcurrentHashMap<>();
+    private final Map<UUID, Long> guiProtectConfirmTimes = new ConcurrentHashMap<>();
 
     public GuiManager(Mapdraw plugin, CanvasManager canvasManager, ToolManager toolManager) {
         this.plugin = plugin;
@@ -311,7 +313,7 @@ public class GuiManager implements Listener {
                     openMainMenu(player, canvas);
                 }
                 case 24 -> { // 打开调色板
-                    Bukkit.getScheduler().runTask(plugin, () -> openPaletteGui(player));
+                    FoliaScheduler.runAtEntity(plugin, player, () -> openPaletteGui(player));
                 }
                 case 29 -> { // 撤销
                     if (canvas == null) {

@@ -13,6 +13,7 @@ import sashwind.mc.plugin.mapdraw.Mapdraw;
 import sashwind.mc.plugin.mapdraw.canvas.CanvasData;
 import sashwind.mc.plugin.mapdraw.canvas.CanvasManager;
 import sashwind.mc.plugin.mapdraw.util.CanvasNBTUtil;
+import sashwind.mc.plugin.mapdraw.util.FoliaScheduler;
 
 public class FrameEntityLoadListener implements Listener {
 
@@ -27,8 +28,8 @@ public class FrameEntityLoadListener implements Listener {
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntityAddToWorld(EntityAddToWorldEvent event) {
         if (event.getEntity() instanceof ItemFrame frame) {
-            // 延后到下一个 tick 执行，避开 Paper/Purpur (Moonrise) 区块切片状态更新期间禁止修改展示框物品/边界框的限制
-            Bukkit.getScheduler().runTask(plugin, () -> {
+            // 在展示框实体的 EntityScheduler 上延后 1 tick 执行，避开切片状态更新期间禁止修改实体的限制
+            FoliaScheduler.runAtEntityLater(plugin, frame, () -> {
                 if (!frame.isValid()) {
                     return;
                 }
@@ -47,7 +48,7 @@ public class FrameEntityLoadListener implements Listener {
                         }
                     }
                 }
-            });
+            }, 1L);
         }
     }
 

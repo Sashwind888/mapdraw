@@ -17,9 +17,11 @@ import sashwind.mc.plugin.mapdraw.tool.ToolManager;
 import sashwind.mc.plugin.mapdraw.tool.ToolType;
 import sashwind.mc.plugin.mapdraw.util.CanvasNBTUtil;
 import sashwind.mc.plugin.mapdraw.util.ColorUtil;
+import sashwind.mc.plugin.mapdraw.util.FoliaScheduler;
 
 import java.awt.Color;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class MapdrawCommand implements CommandExecutor, TabCompleter {
 
@@ -29,7 +31,7 @@ public class MapdrawCommand implements CommandExecutor, TabCompleter {
     private final GuiManager guiManager;
     private final EconomyManager economyManager;
 
-    private final Map<UUID, Long> protectConfirmTimes = new HashMap<>();
+    private final Map<UUID, Long> protectConfirmTimes = new ConcurrentHashMap<>();
 
     public MapdrawCommand(Mapdraw plugin, CanvasManager canvasManager, ToolManager toolManager, GuiManager guiManager, EconomyManager economyManager) {
         this.plugin = plugin;
@@ -216,14 +218,14 @@ public class MapdrawCommand implements CommandExecutor, TabCompleter {
         final int finalW = width;
         final int finalH = height;
 
-        // 异步下载和转换像素，防止阻塞服务器主线程
-        org.bukkit.Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        // 异步下载和转换像素，防止阻塞服务器主线程 (AsyncScheduler)
+        FoliaScheduler.runAsync(plugin, () -> {
             try {
                 sashwind.mc.plugin.mapdraw.util.ImageProcessUtil.ProcessedImage processed =
                     sashwind.mc.plugin.mapdraw.util.ImageProcessUtil.downloadAndProcess(url, finalAlgo, finalW, finalH, bgColor, maxFrames);
 
-                // 回到主线程创建并给予地图物品
-                org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+                // 回到玩家实体线程 (EntityScheduler) 创建并给予地图物品及更新背包
+                FoliaScheduler.runAtEntity(plugin, player, () -> {
                     if (!player.isOnline()) return;
 
                     // 扣款
@@ -287,7 +289,7 @@ public class MapdrawCommand implements CommandExecutor, TabCompleter {
                     player.playSound(player.getLocation(), org.bukkit.Sound.ENTITY_PLAYER_LEVELUP, 0.7f, 1.2f);
                 });
             } catch (Exception e) {
-                org.bukkit.Bukkit.getScheduler().runTask(plugin, () -> {
+                FoliaScheduler.runAtEntity(plugin, player, () -> {
                     if (player.isOnline()) {
                         String errMsg = plugin.getMessage("upload_failed").replace("{error}", e.getMessage() != null ? e.getMessage() : "未知错误");
                         player.sendMessage(getPrefix() + errMsg);

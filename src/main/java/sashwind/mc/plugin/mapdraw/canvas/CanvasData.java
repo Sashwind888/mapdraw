@@ -32,13 +32,13 @@ public class CanvasData implements Serializable {
     private transient int currentFrameIndex;
 
     // 128x128 像素矩阵 (Map Palette index)
-    private byte[] pixels;
+    private volatile byte[] pixels;
 
     // 撤销 / 重做栈 (不序列化到持久文件以节省磁盘空间，内存维护)
     private transient Deque<byte[]> undoStack;
     private transient Deque<byte[]> redoStack;
-    private transient boolean isDirty;
-    private transient int version;
+    private transient volatile boolean isDirty;
+    private transient volatile int version;
 
     public CanvasData cloneAsNew(String newId, int newMapId, String newCreator) {
         CanvasData copy = new CanvasData(newId, newMapId, this.name + " (副本)", this.size, newCreator);

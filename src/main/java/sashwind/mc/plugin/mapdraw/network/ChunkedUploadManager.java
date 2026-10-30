@@ -9,6 +9,7 @@ import sashwind.mc.plugin.mapdraw.canvas.CanvasData;
 import sashwind.mc.plugin.mapdraw.canvas.CanvasManager;
 import sashwind.mc.plugin.mapdraw.economy.EconomyManager;
 import sashwind.mc.plugin.mapdraw.util.CanvasNBTUtil;
+import sashwind.mc.plugin.mapdraw.util.FoliaScheduler;
 import sashwind.mc.plugin.mapdraw.util.ImageProcessUtil;
 
 import javax.imageio.ImageIO;
@@ -167,12 +168,12 @@ public class ChunkedUploadManager {
             offset += chunk.length;
         }
 
-        // 异步执行解码与安全防炸弹检查
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+        // 异步执行解码与安全防炸弹检查 (AsyncScheduler)
+        FoliaScheduler.runAsync(plugin, () -> {
             try {
                 // 安全检查 1: 格式魔数校验
                 if (!validateMagicBytes(completeBytes)) {
-                    sendResult(callback, false, "无效的图片文件格式 (支持 PNG/GIF/WEBP/JPEG)");
+                    sendResult(player, callback, false, "无效的图片文件格式 (支持 PNG/GIF/WEBP/JPEG)");
                     return;
                 }
 
@@ -183,8 +184,8 @@ public class ChunkedUploadManager {
                 ImageProcessUtil.ProcessedImage processed =
                     ImageProcessUtil.downloadAndProcessFromBytes(completeBytes, session.algorithm, session.cols, session.rows, bgColor, maxGifFrames);
 
-                // 回到主线程执行扣费与物品发放
-                Bukkit.getScheduler().runTask(plugin, () -> {
+                // 回到玩家实体线程 (EntityScheduler) 执行扣费与物品发放
+                FoliaScheduler.runAtEntity(plugin, player, () -> {
                     if (!player.isOnline()) return;
 
                     if (!bypassMoney && economyManager.isEnabled() && totalCost > 0) {
@@ -241,13 +242,17 @@ public class ChunkedUploadManager {
                 });
 
             } catch (Exception e) {
-                sendResult(callback, false, "图片解析失败: " + e.getMessage());
+                sendResult(player, callback, false, "图片解析失败: " + e.getMessage());
             }
         });
     }
 
-    private void sendResult(UploadCallback callback, boolean success, String msg) {
-        Bukkit.getScheduler().runTask(plugin, () -> callback.onResult(success, msg));
+    private void sendResult(Player player, UploadCallback callback, boolean success, String msg) {
+        if (player != null && player.isValid()) {
+            FoliaScheduler.runAtEntity(plugin, player, () -> callback.onResult(success, msg));
+        } else {
+            FoliaScheduler.runGlobal(plugin, () -> callback.onResult(success, msg));
+        }
     }
 
     private boolean validateMagicBytes(byte[] data) {

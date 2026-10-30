@@ -14,7 +14,7 @@ public class CanvasMapRenderer extends MapRenderer {
 
     private final CanvasData canvasData;
     private final Set<UUID> renderedPlayers = Collections.newSetFromMap(new ConcurrentHashMap<>());
-    private int renderedVersion = -1;
+    private volatile int renderedVersion = -1;
 
     public CanvasMapRenderer(CanvasData canvasData) {
         super(false); // 全局共享画布
@@ -32,14 +32,16 @@ public class CanvasMapRenderer extends MapRenderer {
         int currentVersion = canvasData.getVersion();
 
         boolean needsDataPush = false;
-        // 1. 如果版本更新或标记脏，必须推送最新像素
-        if (renderedVersion != currentVersion || canvasData.isDirty()) {
-            needsDataPush = true;
-            renderedPlayers.clear();
-        }
-        // 2. 如果新玩家进入视野尚未接收过当前画面，确保推送
-        else if (pid != null && !renderedPlayers.contains(pid)) {
-            needsDataPush = true;
+        // 线程安全判定与版本同步，彻底消除多线程并发渲染下的竞态条件
+        synchronized (this) {
+            if (renderedVersion != currentVersion || canvasData.isDirty()) {
+                needsDataPush = true;
+                renderedPlayers.clear();
+                this.renderedVersion = currentVersion;
+                this.canvasData.setDirty(false);
+            } else if (pid != null && !renderedPlayers.contains(pid)) {
+                needsDataPush = true;
+            }
         }
 
         if (needsDataPush) {
@@ -51,12 +53,10 @@ public class CanvasMapRenderer extends MapRenderer {
             if (pid != null) {
                 renderedPlayers.add(pid);
             }
-            this.renderedVersion = currentVersion;
-            canvasData.setDirty(false);
         }
     }
 
-    public void markDirty() {
+    public synchronized void markDirty() {
         this.renderedPlayers.clear();
         this.renderedVersion = -1;
         this.canvasData.setDirty(true);

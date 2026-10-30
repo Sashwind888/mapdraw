@@ -12,6 +12,7 @@ import sashwind.mc.plugin.mapdraw.api.MapDrawProvider;
 import sashwind.mc.plugin.mapdraw.canvas.CanvasData;
 import sashwind.mc.plugin.mapdraw.canvas.ConnectedCanvasTopology;
 import sashwind.mc.plugin.mapdraw.tool.ToolType;
+import sashwind.mc.plugin.mapdraw.util.FoliaScheduler;
 
 import java.awt.Color;
 import java.util.Map;
@@ -55,6 +56,15 @@ public class PluginMessagePacketListener implements PluginMessageListener {
         }
 
         if (message == null || message.length < 1) {
+            return;
+        }
+
+        // 统一调度至玩家实体的 EntityScheduler 线程执行，确保线程安全且规避 Folia 异步实体与背包访问限制
+        FoliaScheduler.runAtEntity(plugin, player, () -> processPacket(player, message));
+    }
+
+    private void processPacket(Player player, byte[] message) {
+        if (player == null || !player.isOnline()) {
             return;
         }
 

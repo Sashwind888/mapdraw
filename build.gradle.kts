@@ -16,7 +16,11 @@ dependencies {
     compileOnly("com.github.MilkBowl:VaultAPI:1.7.1")
     compileOnly("net.momirealms:craft-engine-core:26.6.1")
     compileOnly("net.momirealms:craft-engine-bukkit:26.6.1")
-    compileOnly("com.comphenix.protocol:ProtocolLib:5.3.0")
+    if (file("libs/ProtocolLib-5.3.0.jar").exists()) {
+        compileOnly(files("libs/ProtocolLib-5.3.0.jar"))
+    } else {
+        compileOnly("com.comphenix.protocol:ProtocolLib:5.3.0")
+    }
 
     implementation("com.twelvemonkeys.imageio:imageio-webp:3.12.0")
 }

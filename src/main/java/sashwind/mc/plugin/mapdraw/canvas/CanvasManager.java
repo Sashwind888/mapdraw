@@ -10,6 +10,7 @@ import org.bukkit.map.MapRenderer;
 import org.bukkit.map.MapView;
 import sashwind.mc.plugin.mapdraw.Mapdraw;
 import sashwind.mc.plugin.mapdraw.util.CanvasNBTUtil;
+import sashwind.mc.plugin.mapdraw.util.FoliaScheduler;
 
 import java.io.*;
 import java.util.*;
@@ -55,13 +56,13 @@ public class CanvasManager {
         }
 
         // 延迟 1 tick 再次确保所有世界与 MapView 完全初始化完毕后重新绑定，防止服务端冷重启时丢失
-        Bukkit.getScheduler().runTask(plugin, () -> {
+        FoliaScheduler.runGlobalLater(plugin, () -> {
             for (CanvasData canvas : canvasById.values()) {
                 attachRenderer(canvas);
             }
             // 全服全量同步已放置的展示框地图：修复所有名称和描述不显示的问题
             syncAllLoadedFrames();
-        });
+        }, 1L);
         plugin.getLogger().info("成功加载 " + canvasById.size() + " 个画布数据！");
     }
 
@@ -69,28 +70,53 @@ public class CanvasManager {
      * 全服全量扫描所有世界中已加载的展示框，自动同步并修复所有名称和描述
      */
     public void syncAllLoadedFrames() {
+        if (FoliaScheduler.isFolia()) {
+            // 在 Folia 架构下，实体状态分散在各 Region 线程
+            // 运行时已由 FrameEntityLoadListener 在实体入界时于各自 EntityScheduler 自动同步
+            // 对冷启动已存在的区块，按 RegionScheduler 批量遍历安全同步
+            for (org.bukkit.World world : Bukkit.getWorlds()) {
+                for (org.bukkit.Chunk chunk : world.getLoadedChunks()) {
+                    FoliaScheduler.runAtLocation(plugin, chunk.getBlock(0, 64, 0).getLocation(), () -> {
+                        for (org.bukkit.entity.Entity e : chunk.getEntities()) {
+                            if (e instanceof org.bukkit.entity.ItemFrame frame && frame.isValid()) {
+                                syncSingleFrame(frame);
+                            }
+                        }
+                    });
+                }
+            }
+            return;
+        }
+
         int repairedCount = 0;
         for (org.bukkit.World world : Bukkit.getWorlds()) {
             for (org.bukkit.entity.ItemFrame frame : world.getEntitiesByClass(org.bukkit.entity.ItemFrame.class)) {
-                ItemStack item = frame.getItem();
-                if (CanvasNBTUtil.isCanvasMap(item)) {
-                    CanvasData canvas = getCanvasFromItem(item);
-                    if (canvas != null) {
-                        CanvasNBTUtil.applyCanvasMeta(item, canvas);
-                        frame.setCustomNameVisible(false);
-                        frame.customName(null);
-                        frame.setItem(item, false);
-                        if (item.getItemMeta() instanceof MapMeta meta && meta.hasMapView()) {
-                            checkAndAttachRenderer(meta.getMapView(), canvas);
-                        }
-                        repairedCount++;
-                    }
+                if (syncSingleFrame(frame)) {
+                    repairedCount++;
                 }
             }
         }
         if (repairedCount > 0) {
             plugin.getLogger().info("已全量同步并修复 " + repairedCount + " 个展示框画作的名称与描述数据！");
         }
+    }
+
+    private boolean syncSingleFrame(org.bukkit.entity.ItemFrame frame) {
+        ItemStack item = frame.getItem();
+        if (CanvasNBTUtil.isCanvasMap(item)) {
+            CanvasData canvas = getCanvasFromItem(item);
+            if (canvas != null) {
+                CanvasNBTUtil.applyCanvasMeta(item, canvas);
+                frame.setCustomNameVisible(false);
+                frame.customName(null);
+                frame.setItem(item, false);
+                if (item.getItemMeta() instanceof MapMeta meta && meta.hasMapView()) {
+                    checkAndAttachRenderer(meta.getMapView(), canvas);
+                }
+                return true;
+            }
+        }
+        return false;
     }
 
     public void saveAll() {

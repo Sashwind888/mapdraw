@@ -26,6 +26,7 @@ import sashwind.mc.plugin.mapdraw.tool.PlayerDrawSession;
 import sashwind.mc.plugin.mapdraw.tool.ToolManager;
 import sashwind.mc.plugin.mapdraw.tool.ToolType;
 import sashwind.mc.plugin.mapdraw.util.CanvasNBTUtil;
+import sashwind.mc.plugin.mapdraw.util.FoliaScheduler;
 import sashwind.mc.plugin.mapdraw.util.ItemFrameRayTraceUtil;
 
 import java.awt.Point;
@@ -183,8 +184,8 @@ public class ItemFrameDrawListener implements Listener {
             ItemStack main = event.getPlayer().getInventory().getItemInMainHand();
             ItemStack off = event.getPlayer().getInventory().getItemInOffHand();
             if (CanvasNBTUtil.isCanvasMap(main) || CanvasNBTUtil.isCanvasMap(off)) {
-                // 延迟 1 tick 消除放入展示框后的悬浮文字，防止遮挡视线
-                Bukkit.getScheduler().runTask(plugin, () -> cleanFrameDisplayName(frame));
+                // 延迟 1 tick 消除放入展示框后的悬浮文字，防止遮挡视线 (EntityScheduler)
+                FoliaScheduler.runAtEntityLater(plugin, frame, () -> cleanFrameDisplayName(frame), 1L);
             }
             return;
         }

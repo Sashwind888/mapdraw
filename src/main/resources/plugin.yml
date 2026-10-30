@@ -2,6 +2,7 @@ name: mapdraw
 version: '${version}'
 main: sashwind.mc.plugin.mapdraw.Mapdraw
 api-version: '26.2'
+folia-supported: true
 load: POSTWORLD
 authors: [ Sashwind ]
 depend: [ ProtocolLib ]
